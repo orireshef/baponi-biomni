@@ -1,0 +1,36 @@
+[project]
+name = "baponi-biomni"
+version = "0.1.0"
+description = "Run snap-stanford/biomni with baponi.ai sandboxed code execution"
+requires-python = ">=3.10"
+license = "MIT"
+dependencies = [
+    "biomni",
+    "baponi>=0.4.0",
+    "httpx>=0.25",
+    "python-dotenv>=1.0",
+    # biomni 0.0.8 ships incomplete deps; add what its modules actually import.
+    "pandas",
+    "requests",
+    "tqdm",
+    "langchain-text-splitters",
+    "langchain-anthropic",
+    "langchain-openai",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-mock>=3.12",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/baponi_biomni"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
