@@ -30,7 +30,7 @@ class BaponiExecutor:
         self,
         *,
         thread_id: str | None = None,
-        timeout: int = 60,
+        timeout: int = 600,
         env_vars: dict[str, str] | None = None,
         client: Baponi | None = None,
         base_url: str | None = None,

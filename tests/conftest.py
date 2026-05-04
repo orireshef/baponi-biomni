@@ -89,6 +89,15 @@ class FakeBaponi:
         return _FakeSignedUrl(url=f"http://fake-storage/{id}/{path}")
 
 
+@pytest.fixture(autouse=True)
+def _clear_baponi_env(monkeypatch):
+    """Tests should not inherit BAPONI_* env vars from the developer's
+    shell or .env file. Each test gets a clean slate; opt-in via
+    `monkeypatch.setenv` when a test exercises an env-driven code path."""
+    for var in ("BAPONI_PYTHON_BIN", "BAPONI_BASE_URL", "BAPONI_API_KEY"):
+        monkeypatch.delenv(var, raising=False)
+
+
 @pytest.fixture
 def fake_baponi(monkeypatch):
     fake = FakeBaponi()
