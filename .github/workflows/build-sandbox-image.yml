@@ -1,0 +1,68 @@
+name: Build sandbox image
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'docker/Dockerfile.sandbox'
+      - 'docker/install_r_packages.R'
+      - '.github/workflows/build-sandbox-image.yml'
+  pull_request:
+    paths:
+      - 'docker/Dockerfile.sandbox'
+      - 'docker/install_r_packages.R'
+      - '.github/workflows/build-sandbox-image.yml'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Image tag (in addition to git sha + latest on master)'
+        required: false
+        default: ''
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/baponi-biomni
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=sandbox-latest,enable={{is_default_branch}}
+            type=raw,value=sandbox-${{ github.sha }}
+            type=raw,value=${{ inputs.tag }},enable=${{ inputs.tag != '' }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.sandbox
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          # Linux/amd64 only — Baponi sandboxes run on x86_64.
+          platforms: linux/amd64

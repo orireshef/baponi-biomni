@@ -1,0 +1,194 @@
+# OCI image for the Baponi sandbox running biomni's full E1 environment.
+#
+# Layout matches biomni's biomni_env/ recipes (snap-stanford/Biomni):
+#   - environment.yml   : core Python deps (3.11, biomni)
+#   - bio_env.yml       : bioinformatics CLI + Python libs
+#   - r_packages.yml    : r-essentials + Bioconductor
+#   - install_cli_tools : skipped (PLINK/IQ-TREE/GCTA not yet needed; add later)
+#
+# Built and published to ghcr.io/orireshef/baponi-biomni:sandbox-<tag> via
+# .github/workflows/build-sandbox-image.yml. Reference the image when
+# provisioning a Baponi API key in the admin console.
+
+FROM debian:bookworm-slim AS sys
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# System packages: build chain, Python 3.11, R, bioinformatics CLIs.
+# r-recommended pulls the standard R package set (Matrix, MASS, survival, ...).
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        curl \
+        git \
+        gnupg \
+        wget \
+        pkg-config \
+        # Python 3.11 (Debian bookworm default)
+        python3 \
+        python3-dev \
+        python3-pip \
+        python3-venv \
+        # R and headers required by Bioconductor builds
+        r-base \
+        r-base-dev \
+        r-recommended \
+        # Bio CLIs from bio_env.yml that have apt packages
+        ncbi-blast+ \
+        samtools \
+        bowtie2 \
+        bwa \
+        bedtools \
+        fastqc \
+        mafft \
+        # Image / scientific lib system deps
+        libffi-dev \
+        libssl-dev \
+        libxml2-dev \
+        libcurl4-openssl-dev \
+        libfontconfig1-dev \
+        libfreetype6-dev \
+        libpng-dev \
+        libjpeg-dev \
+        libtiff-dev \
+        libcairo2-dev \
+        libharfbuzz-dev \
+        libfribidi-dev \
+        # HDF5 / netcdf for scanpy / anndata
+        libhdf5-dev \
+        libnetcdf-dev \
+        # Graph / cluster libs
+        libigraph-dev \
+        # Other small utilities biomni's tools shell out to
+        unzip \
+        zip \
+        jq \
+    && rm -rf /var/lib/apt/lists/*
+
+# Make `python` resolve to python3 so biomni's exec helpers work uniformly.
+RUN ln -sf /usr/bin/python3 /usr/local/bin/python
+
+# Install pip + uv for fast resolves (uv is ~10x faster than pip-install for
+# the long biomni deps list).
+RUN python -m pip install --upgrade --break-system-packages pip uv
+
+# ---- Python deps -----------------------------------------------------------
+# Mirror biomni/environment.yml + biomni/bio_env.yml pip sections.
+# Pinned numpy<2.5 to match biomni's expected ABI for binary scientific deps.
+# Note: pymc3 is end-of-life; substitute pymc>=5 (current).
+#       cryosparc-tools is private to cryosparc, drop unless explicitly needed.
+
+# Pip-install the biomni package itself first so its declared deps are
+# resolved first, then layer the curated stack on top to override versions.
+RUN python -m pip install --break-system-packages biomni
+
+# Curated scientific stack (biomni environment.yml + bio_env.yml minus
+# items already installed transitively or unavailable on PyPI).
+RUN python -m pip install --break-system-packages \
+        "numpy<2.5" \
+        pandas \
+        matplotlib \
+        scipy \
+        statsmodels \
+        scikit-learn \
+        seaborn \
+        networkx \
+        beautifulsoup4 \
+        lxml \
+        tqdm \
+        requests \
+        pyyaml \
+        pytest \
+        python-dotenv \
+        cloudpickle \
+        # langchain / agents (host-side, but useful to have if user code
+        # constructs sub-agents inside the sandbox)
+        langchain \
+        langchain-community \
+        langchain-openai \
+        langchain-anthropic \
+        langchain-ollama \
+        langgraph \
+        openai \
+        anthropic \
+        transformers \
+        sentencepiece \
+        mcp \
+        tooluniverse \
+    && python -m pip install --break-system-packages \
+        # Bio Python libraries from bio_env.yml
+        scanpy \
+        biopython \
+        biopandas \
+        biotite \
+        rdkit \
+        opencv-python-headless \
+        macs2 \
+        lifelines \
+        scikit-image \
+        googlesearch-python \
+        PyPDF2 \
+        gget \
+        faiss-cpu \
+        cellxgene-census \
+        scikit-bio \
+        pymed \
+        arxiv \
+        scholarly \
+        umap-learn \
+        scrublet \
+        scvelo \
+        scvi-tools \
+        harmony-pytorch \
+        pyliftover \
+        "pytdc==0.4.0" \
+        pysam \
+        pyfaidx \
+        pyranges \
+        pybedtools \
+        openmm \
+        pystan \
+        igraph \
+        pyscenic \
+        cooler \
+        trackpy \
+        FlowCytometryTools \
+        cellpose \
+        ViennaRNA \
+        PyMassSpec \
+        python-libsbml \
+        cobra \
+        reportlab \
+        hmmlearn \
+        msprime \
+        tskit \
+        cyvcf2 \
+        pykalman \
+        python-louvain \
+        fanc
+
+# ---- R + Bioconductor ------------------------------------------------------
+# Mirror biomni's r_packages.yml + install_r_packages.R: r-essentials is the
+# conda meta-package; on Debian we install r-recommended (above) and the
+# Bioconductor essentials commonly used by biomni's R-based tools.
+COPY docker/install_r_packages.R /tmp/install_r_packages.R
+RUN Rscript /tmp/install_r_packages.R && rm /tmp/install_r_packages.R
+
+# ---- Sandbox runtime conventions -------------------------------------------
+# Baponi mounts thread-scoped storage at /home/baponi. We don't bake anything
+# into that path; it's populated at runtime per thread.
+WORKDIR /code
+ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# Smoke-check biomni imports cleanly. If this fails the build aborts.
+RUN python -c "import biomni, rdkit, scanpy, Bio; \
+    print('biomni', biomni.__version__); \
+    print('rdkit', rdkit.__version__); \
+    print('scanpy', scanpy.__version__); \
+    print('Bio', Bio.__version__)"
+
+CMD ["python"]
