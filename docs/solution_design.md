@@ -106,8 +106,19 @@ catch a regression.
 
 State of plots is tracked per-executor via `self._seen_plots: set[str]`.
 Diffed against each `list_files` response so only newly created PNGs round-
-trip back. The deduplication preserves biomni's existing dedupe-by-string
-semantics on `_captured_plots`.
+trip back.
+
+Each new PNG is delivered three ways so all downstream consumers in biomni
+keep working:
+
+1. **Written to disk** at `self.host_plots_dir / <filename>.png`
+   (default `data/plots/<thread_id>/`). This is what makes biomni's gradio
+   UI render plots inline — its rendering loop scans tool stdout for
+   `*.png` paths and renders any that resolve on host (`a1.py:2713`).
+2. **Appended to `support_tools._captured_plots`** as a `data:image/png;base64,…`
+   URI. This is what biomni's markdown export (`_add_execution_plots`) uses.
+3. **Announced in stdout** via a `Plot saved to: <abs-host-path>` line so
+   the gradio scanner finds path 1 above.
 
 ## State persistence flow
 

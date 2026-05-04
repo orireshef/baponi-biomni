@@ -222,3 +222,6 @@ __marimo__/
 
 # macOS
 .DS_Store
+
+# Claude Code scheduled task lockfile
+.claude/scheduled_tasks.lock

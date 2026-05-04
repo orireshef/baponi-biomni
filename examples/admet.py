@@ -21,7 +21,7 @@ def main() -> None:
     load_dotenv()
     agent = make_agent(
         path="./data",
-        llm=os.environ.get("LLM_MODEL", "qwen3.5-35b-a3b@8bit"),
+        llm=os.environ.get("LLM_MODEL", "qwen3.6-35b-a3b-nvfp4"),
         source="Custom",
         base_url=os.environ.get("LLM_BASE_URL", "http://127.0.0.1:1234/v1"),
         api_key="lm-studio",

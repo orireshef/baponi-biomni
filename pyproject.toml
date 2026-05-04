@@ -19,10 +19,24 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+ui = [
+    # biomni 0.0.8's launch_gradio_demo uses gradio 4.x APIs (Chatbot type kwarg)
+    "gradio>=4.36,<5.0",
+    # gradio 4.x pulls pydub which uses stdlib `audioop`, removed in Python 3.13
+    "audioop-lts; python_version >= '3.13'",
+    # gradio 4.x imports HfFolder which was removed in huggingface_hub 0.26+
+    "huggingface_hub<0.26",
+    # starlette 1.0 changed Jinja2 template cache-key shape; gradio 4.x's
+    # template loader trips on it (TypeError: unhashable type: 'dict')
+    "starlette<1.0",
+]
 dev = [
     "pytest>=8.0",
     "pytest-mock>=3.12",
 ]
+
+[project.scripts]
+baponi-biomni-ui = "baponi_biomni.ui:main"
 
 [build-system]
 requires = ["hatchling"]

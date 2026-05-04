@@ -33,6 +33,22 @@ agent.go("Predict ADMET properties of ibuprofen.")
 patches before importing `A1`, so any of biomni's tools that shell out to
 `run_python_repl` / `run_bash_script` / `run_cli_command` go through Baponi.
 
+## Web UI
+
+Launch biomni's built-in Gradio UI with all execution sandboxed:
+
+```bash
+uv sync --extra ui
+uv run baponi-biomni-ui --host 127.0.0.1
+# open http://127.0.0.1:7860
+```
+
+By default the UI uses LM Studio at `http://127.0.0.1:1234/v1` for the LLM.
+Override via `LLM_BASE_URL`, `LLM_MODEL`, `LLM_SOURCE`, `LLM_API_KEY` in `.env`.
+
+Plots render inline: PNGs created in the sandbox are pulled to
+`data/plots/<thread_id>/` on the host so biomni's chat UI can display them.
+
 ## Usage as a library
 
 ```python
