@@ -114,7 +114,7 @@ class BaponiExecutor:
     def cli(self, command: str) -> str:
         return self.bash(command)
 
-    def r(self, code: str) -> str:
+    def r(self, _code: str) -> str:
         raise RNotSupportedError()
 
     _PLOTS_DIR = "_plots"

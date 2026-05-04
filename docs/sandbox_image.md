@@ -77,14 +77,34 @@ print(ex.python('from rdkit import Chem; print(Chem.MolFromSmiles(\"CCO\").GetNu
 
 Expected: prints `0.0.8` and `3` with no install dance.
 
+## Known limitations of `cbioportal/biomni:latest`
+
+Surfaced during ADMET smoke against staging:
+
+- **Stripped Python stdlib** — `unittest` (and `unittest.mock`) is missing,
+  which breaks torch on import. Anything that transitively imports torch
+  (`DeepPurpose`, `scvi-tools`, `harmony-pytorch`) fails the moment it
+  loads. The agent falls back to RDKit + literature-grounded reasoning,
+  which is fine for explanatory tasks but means ML-predictor tools
+  (`predict_admet_properties`, `predict_drug_target_interaction`, etc.)
+  don't actually run.
+- **Heavy ML model loads still time out at 60s** — even when the
+  underlying lib works, first-call model loads commonly exceed the free
+  tier's exec budget. Pro tier (3600s) or cached warm-up calls per thread
+  are the way around it.
+
 ## Out of scope (next iterations)
 
 When the need surfaces:
 
+- **Fixed image with full stdlib + torch working**: derive
+  `FROM cbioportal/biomni:latest` and reinstall `python3-unittest`
+  (or rebuild the conda env without the stdlib stripping). Unlocks
+  DeepPurpose-backed predictors.
 - **R + Bioconductor layer**: a small derived Dockerfile
-  (`FROM cbioportal/biomni:latest`) that adds `r-base`, `r-recommended`, and
-  Bioconductor essentials (DESeq2, Seurat, edgeR, limma...). Then rewire
-  `BaponiExecutor.r()` to route through `client.execute(language="bash")`
+  (`FROM cbioportal/biomni:latest`) that adds `r-base`, `r-recommended`,
+  and Bioconductor essentials (DESeq2, Seurat, edgeR, limma...). Then
+  rewire `BaponiExecutor.r()` to route through `client.execute(language="bash")`
   with `Rscript`.
 - **Bio CLI layer**: derived image adding ncbi-blast+, samtools, bwa,
   bedtools, fastqc, mafft from apt.
