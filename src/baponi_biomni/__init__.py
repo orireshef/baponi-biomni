@@ -14,6 +14,7 @@ def make_agent(
     source: str | None = None,
     base_url: str | None = None,
     api_key: str | None = None,
+    max_tokens: int | None = 200_000,
     thread_id: str | None = None,
     env_vars: dict[str, str] | None = None,
     timeout: int = 600,
@@ -30,6 +31,12 @@ def make_agent(
             (e.g. "http://127.0.0.1:1234/v1" for LM Studio).
         api_key: LLM API key. For local servers like LM Studio, any non-empty
             string works.
+        max_tokens: override the LLM's max output tokens. Biomni hardcodes
+            8192 for Custom source (`biomni.llm.get_llm`); reasoning models
+            like qwen3.6 spend many tokens on hidden reasoning before the
+            visible answer, so 8k truncates output. Default 200k matches a
+            typical large-context local model. Pass None to leave biomni's
+            default in place.
         thread_id: baponi thread id (auto-generated UUID if None). Files and
             installed packages persist under /home/baponi for this thread.
         env_vars: environment variables injected into the sandbox per call.
@@ -53,4 +60,10 @@ def make_agent(
 
     agent = A1(path=path, llm=llm, **a1_extra, **a1_kwargs)
     agent._baponi_executor = executor
+
+    if max_tokens is not None and hasattr(agent.llm, "max_tokens"):
+        try:
+            agent.llm.max_tokens = max_tokens
+        except Exception as e:
+            print(f"[baponi-biomni] could not set max_tokens={max_tokens}: {e}")
     return agent
