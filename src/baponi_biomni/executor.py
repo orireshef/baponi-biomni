@@ -4,6 +4,7 @@ import base64
 import os
 import re
 import shlex
+from pathlib import Path
 from uuid import uuid4
 
 import httpx
@@ -35,6 +36,7 @@ class BaponiExecutor:
         client: Baponi | None = None,
         base_url: str | None = None,
         python_bin: str | None = None,
+        host_plots_dir: str | os.PathLike[str] | None = None,
     ) -> None:
         """Construct an executor bound to one Baponi thread.
 
@@ -47,6 +49,9 @@ class BaponiExecutor:
                 through `language="bash"` invoking that interpreter on a
                 file we drop in /home/baponi. Reads BAPONI_PYTHON_BIN env
                 if not passed.
+            host_plots_dir: where pulled-down PNGs land on the host. Default
+                `data/plots/<thread_id>/`. Biomni's gradio UI scans tool
+                stdout for *.png paths and renders any that resolve on host.
         """
         if client is None:
             kwargs: dict = {}
@@ -60,6 +65,11 @@ class BaponiExecutor:
         self.env_vars = {k.upper(): v for k, v in (env_vars or {}).items()}
         self.python_bin = python_bin or os.environ.get("BAPONI_PYTHON_BIN") or None
         self._seen_plots: set[str] = set()
+        self.host_plots_dir = (
+            Path(host_plots_dir)
+            if host_plots_dir is not None
+            else Path("data") / "plots" / self.thread_id
+        )
 
     def python(self, command: str) -> str:
         code = _strip_fences(command)
@@ -94,10 +104,17 @@ class BaponiExecutor:
                 thread_id=self.thread_id,
                 env_vars=self.env_vars or None,
             )
-        self._sync_plots()
+        new_host_paths = self._sync_plots()
         if not result.success:
             return f"Error: {result.stderr.strip() or result.error or 'unknown'}"
-        return result.stdout
+        stdout = result.stdout
+        # Append host-resolvable paths so biomni's gradio scanner picks them up
+        # and renders inline. Each line matches biomni's regex.
+        if new_host_paths:
+            stdout = stdout.rstrip("\n") + "\n" + "\n".join(
+                f"Plot saved to: {p}" for p in new_host_paths
+            ) + "\n"
+        return stdout
 
     def bash(self, script: str) -> str:
         result = self.client.execute(
@@ -119,8 +136,17 @@ class BaponiExecutor:
 
     _PLOTS_DIR = "_plots"
 
-    def _sync_plots(self) -> None:
-        """Pull new PNGs from /home/baponi/_plots into biomni's _captured_plots.
+    def _sync_plots(self) -> list[str]:
+        """Pull new PNGs from /home/baponi/_plots.
+
+        Side effects:
+          - Writes bytes to self.host_plots_dir/<filename>.png so biomni's
+            gradio UI can render them via its existing path-scanning logic.
+          - Appends a base64 data URI to biomni.tool.support_tools._captured_plots
+            so the markdown export (`_add_execution_plots`) keeps working.
+
+        Returns:
+            Absolute host paths of newly fetched PNGs.
 
         Note: list_files returns paths RELATIVE to the `path` argument (just
         the filename here), but download_url needs the FULL path from the
@@ -132,20 +158,22 @@ class BaponiExecutor:
             )
         except Exception as e:
             print(f"[baponi-biomni] list_files failed: {e}")
-            return
+            return []
 
         new = [
             f for f in files
             if f.path.endswith(".png") and f.path not in self._seen_plots
         ]
         if not new:
-            return
+            return []
 
         try:
             from biomni.tool import support_tools
         except ImportError:
             support_tools = None
 
+        self.host_plots_dir.mkdir(parents=True, exist_ok=True)
+        host_paths: list[str] = []
         for f in new:
             full_path = f"{self._PLOTS_DIR}/{f.path}"
             try:
@@ -155,9 +183,15 @@ class BaponiExecutor:
                 headers = {h.name: h.value for h in signed.headers}
                 resp = httpx.get(signed.url, headers=headers, timeout=30)
                 resp.raise_for_status()
+                png_bytes = resp.content
+
+                host_path = self.host_plots_dir / f.path
+                host_path.write_bytes(png_bytes)
+                host_paths.append(str(host_path.resolve()))
+
                 data_uri = (
                     "data:image/png;base64,"
-                    + base64.b64encode(resp.content).decode("utf-8")
+                    + base64.b64encode(png_bytes).decode("utf-8")
                 )
                 if support_tools is not None:
                     if data_uri not in support_tools._captured_plots:
@@ -165,3 +199,4 @@ class BaponiExecutor:
                 self._seen_plots.add(f.path)
             except Exception as e:
                 print(f"[baponi-biomni] plot fetch failed for {full_path}: {e}")
+        return host_paths
