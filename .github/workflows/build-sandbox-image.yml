@@ -66,3 +66,25 @@ jobs:
           cache-to: type=gha,mode=max
           # Linux/amd64 only — Baponi sandboxes run on x86_64.
           platforms: linux/amd64
+
+      - name: Make package public
+        if: github.event_name != 'pull_request'
+        # The package only exists after the first successful push, so this
+        # step no-ops on the very first run if the build cache is empty.
+        # Requires a PAT with `admin:packages` (workflow GITHUB_TOKEN scope
+        # is insufficient for visibility changes). Fall back gracefully if
+        # the secret isn't configured so the build still goes green.
+        env:
+          GH_TOKEN: ${{ secrets.GHCR_VISIBILITY_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          # The package name on ghcr.io is the lowercase repo name.
+          PKG_NAME="$(echo '${{ env.IMAGE_NAME }}' | awk -F/ '{print $NF}' | tr '[:upper:]' '[:lower:]')"
+          OWNER="${{ github.repository_owner }}"
+          echo "Setting visibility=public on $OWNER/$PKG_NAME"
+          gh api \
+            --method PATCH \
+            -H "Accept: application/vnd.github+json" \
+            "/users/$OWNER/packages/container/$PKG_NAME/visibility" \
+            -f visibility=public \
+            || echo "[warn] visibility change failed (likely first push: package not yet registered, or token lacks admin:packages). Re-run after the first publish, or set GHCR_VISIBILITY_TOKEN."
