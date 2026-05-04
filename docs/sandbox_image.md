@@ -48,9 +48,13 @@ apt installs). Build it on demand rather than carrying the cost upfront.
 
 Baponi binds one OCI image per API key in the admin console.
 
-1. In the Baponi admin console, create a new API key with the image set to
+1. In the Baponi admin console, set the image on your sandbox to
    `docker.io/cbioportal/biomni:latest`.
-2. Drop the new key into `.env` as `BAPONI_API_KEY`.
+2. Add `BAPONI_PYTHON_BIN=/opt/conda/envs/biomni/bin/python` to `.env`.
+   The image puts python under conda's env dir, which is not on Baponi's
+   auto-detected language path. Without this, `client.execute(language="python")`
+   returns `Language 'python' not available in this image`. With it, our
+   executor wraps Python execs as bash invoking that interpreter directly.
 3. Re-run `examples/admet.py` or the gradio UI. The agent should now do
    `from biomni.tool.pharmacology import predict_admet_properties` directly
    without the runtime install dance.
@@ -59,23 +63,19 @@ The image is public on Docker Hub, so Baponi can pull it without auth.
 
 ## Verifying
 
-After hooking it up, two quick checks:
+After hooking it up (with `BAPONI_PYTHON_BIN` set), two quick checks:
 
 ```bash
-# 1. biomni is preinstalled
 uv run python -c "
+from dotenv import load_dotenv; load_dotenv()
 from baponi_biomni import BaponiExecutor
 ex = BaponiExecutor(thread_id='img-check', timeout=30)
 print(ex.python('import biomni; print(biomni.__version__)'))
-"
-
-# 2. rdkit works without install
-uv run python -c "
-from baponi_biomni import BaponiExecutor
-ex = BaponiExecutor(thread_id='rdkit-check', timeout=30)
-print(ex.python('from rdkit import Chem; print(Chem.MolFromSmiles(\"CCO\"))'))
+print(ex.python('from rdkit import Chem; print(Chem.MolFromSmiles(\"CCO\").GetNumAtoms())'))
 "
 ```
+
+Expected: prints `0.0.8` and `3` with no install dance.
 
 ## Out of scope (next iterations)
 

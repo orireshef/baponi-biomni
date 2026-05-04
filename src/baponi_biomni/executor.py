@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import os
 import re
+import shlex
 from uuid import uuid4
 
 import httpx
@@ -33,7 +34,20 @@ class BaponiExecutor:
         env_vars: dict[str, str] | None = None,
         client: Baponi | None = None,
         base_url: str | None = None,
+        python_bin: str | None = None,
     ) -> None:
+        """Construct an executor bound to one Baponi thread.
+
+        Args:
+            python_bin: explicit path to the python interpreter inside the
+                sandbox image. Set this when the image's python is not on
+                Baponi's auto-detected language list (e.g. cbioportal/biomni
+                ships python at /opt/conda/envs/biomni/bin/python which
+                Baponi doesn't see). When set, Python execs are routed
+                through `language="bash"` invoking that interpreter on a
+                file we drop in /home/baponi. Reads BAPONI_PYTHON_BIN env
+                if not passed.
+        """
         if client is None:
             kwargs: dict = {}
             url = base_url or os.environ.get("BAPONI_BASE_URL")
@@ -44,18 +58,42 @@ class BaponiExecutor:
         self.thread_id = thread_id or _make_thread_id()
         self.timeout = timeout
         self.env_vars = {k.upper(): v for k, v in (env_vars or {}).items()}
+        self.python_bin = python_bin or os.environ.get("BAPONI_PYTHON_BIN") or None
         self._seen_plots: set[str] = set()
 
     def python(self, command: str) -> str:
         code = _strip_fences(command)
         wrapped = wrap(code)
-        result = self.client.execute(
-            wrapped,
-            language="python",
-            timeout=self.timeout,
-            thread_id=self.thread_id,
-            env_vars=self.env_vars or None,
-        )
+        if self.python_bin:
+            # Route through bash so we can pick a non-default python (e.g.
+            # /opt/conda/envs/biomni/bin/python in the cbioportal image).
+            # Drop the wrapped source into /home/baponi via a heredoc-on-disk
+            # idiom so multi-line code survives shell quoting unchanged.
+            script_name = f"/home/baponi/_biomni_exec_{uuid4().hex[:12]}.py"
+            wrapper = (
+                f"cat > {script_name} <<'__BAPONI_BIOMNI_END__'\n"
+                f"{wrapped}\n"
+                f"__BAPONI_BIOMNI_END__\n"
+                f"{shlex.quote(self.python_bin)} {script_name}\n"
+                f"_rc=$?\n"
+                f"rm -f {script_name}\n"
+                f"exit $_rc\n"
+            )
+            result = self.client.execute(
+                wrapper,
+                language="bash",
+                timeout=self.timeout,
+                thread_id=self.thread_id,
+                env_vars=self.env_vars or None,
+            )
+        else:
+            result = self.client.execute(
+                wrapped,
+                language="python",
+                timeout=self.timeout,
+                thread_id=self.thread_id,
+                env_vars=self.env_vars or None,
+            )
         self._sync_plots()
         if not result.success:
             return f"Error: {result.stderr.strip() or result.error or 'unknown'}"

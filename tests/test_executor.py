@@ -74,3 +74,31 @@ def test_env_vars_uppercased_and_passed(fake_baponi, fake_biomni):
     ex.python("import os")
     env = fake_baponi.calls[0]["env_vars"]
     assert env == {"FOO": "bar", "BAZ": "qux"}
+
+
+def test_python_bin_routes_through_bash(fake_baponi, fake_biomni):
+    ex = BaponiExecutor(python_bin="/opt/conda/envs/biomni/bin/python")
+    ex.python("print('hi')")
+    assert len(fake_baponi.calls) == 1
+    call = fake_baponi.calls[0]
+    assert call["language"] == "bash"
+    code = call["code"]
+    # Heredoc preserves the wrapped python source
+    assert "print('hi')" in code
+    assert "_biomni_ns.pkl" in code
+    # Bash invokes the explicit interpreter
+    assert "/opt/conda/envs/biomni/bin/python" in code
+
+
+def test_python_bin_from_env(fake_baponi, fake_biomni, monkeypatch):
+    monkeypatch.setenv("BAPONI_PYTHON_BIN", "/opt/conda/envs/biomni/bin/python")
+    ex = BaponiExecutor()
+    ex.python("x = 1")
+    assert fake_baponi.calls[0]["language"] == "bash"
+    assert "/opt/conda/envs/biomni/bin/python" in fake_baponi.calls[0]["code"]
+
+
+def test_python_bin_unset_uses_python_language(fake_baponi, fake_biomni):
+    ex = BaponiExecutor()
+    ex.python("x = 1")
+    assert fake_baponi.calls[0]["language"] == "python"
