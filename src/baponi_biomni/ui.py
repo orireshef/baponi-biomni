@@ -29,7 +29,7 @@ def main() -> None:
     parser.add_argument("--share", action="store_true",
                         help="Expose a public gradio.live tunnel")
     parser.add_argument("--data-path", default="./data")
-    parser.add_argument("--timeout", type=int, default=60,
+    parser.add_argument("--timeout", type=int, default=600,
                         help="Per-call sandbox timeout (seconds)")
     parser.add_argument("--baponi-thread-id", default=None,
                         help="Explicit Baponi sandbox thread id "
@@ -47,8 +47,9 @@ def main() -> None:
 
     # Gradio 4.x runs an httpx HEAD against the bound address after launch and
     # raises if it can't reach itself. On macOS that probe sometimes fails
-    # spuriously even though the server is up. Skip the check.
-    gradio.networking.url_ok = lambda url: True
+    # spuriously even though the server is up. Skip the check. Accept *args
+    # so we don't break if a future gradio version passes timeout=...
+    gradio.networking.url_ok = lambda *_a, **_k: True
 
     # gradio 4.44 + pydantic v2 generates `additionalProperties: True` (a
     # bool) in some langchain tool schemas, which gradio_client's
@@ -68,12 +69,20 @@ def main() -> None:
 
     from baponi_biomni import make_agent
 
+    # Reasoning-capable local models (qwen3.x, deepseek-r1, ...) burn many
+    # tokens on hidden reasoning before the visible answer; biomni's
+    # hardcoded 8192 cap truncates them. Override only when source=Custom
+    # so we don't 400 cloud APIs that cap at lower model-specific values.
+    source = os.environ.get("LLM_SOURCE", "Custom")
+    max_tokens = 200_000 if source == "Custom" else None
+
     agent = make_agent(
         path=args.data_path,
         llm=os.environ.get("LLM_MODEL", "qwen3.6-35b-a3b-nvfp4"),
-        source=os.environ.get("LLM_SOURCE", "Custom"),
+        source=source,
         base_url=os.environ.get("LLM_BASE_URL", "http://127.0.0.1:1234/v1"),
         api_key=os.environ.get("LLM_API_KEY", "lm-studio"),
+        max_tokens=max_tokens,
         thread_id=args.baponi_thread_id,
         timeout=args.timeout,
         expected_data_lake_files=[],
