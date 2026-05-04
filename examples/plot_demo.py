@@ -13,7 +13,7 @@ from baponi_biomni import BaponiExecutor
 
 def main() -> None:
     load_dotenv()
-    ex = BaponiExecutor(timeout=60)
+    ex = BaponiExecutor(timeout=600)
     print(f"thread_id: {ex.thread_id}")
 
     print("\n--- step 1: define x ---")

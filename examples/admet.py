@@ -25,7 +25,7 @@ def main() -> None:
         source="Custom",
         base_url=os.environ.get("LLM_BASE_URL", "http://127.0.0.1:1234/v1"),
         api_key="lm-studio",
-        timeout=60,
+        timeout=600,
         expected_data_lake_files=[],  # skip the 12GB+ data lake download for the demo
     )
     agent.go(

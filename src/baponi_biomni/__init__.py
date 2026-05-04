@@ -16,7 +16,7 @@ def make_agent(
     api_key: str | None = None,
     thread_id: str | None = None,
     env_vars: dict[str, str] | None = None,
-    timeout: int = 60,
+    timeout: int = 600,
     **a1_kwargs,
 ):
     """Build a biomni A1 agent that runs all code through baponi sandbox.
@@ -34,7 +34,9 @@ def make_agent(
             installed packages persist under /home/baponi for this thread.
         env_vars: environment variables injected into the sandbox per call.
             Keys uppercased automatically; PATH/HOME/etc. are blocked by baponi.
-        timeout: per-call sandbox timeout in seconds (free tier max 60).
+        timeout: per-call sandbox timeout in seconds. Free tier caps at 60;
+            Pro/Enterprise allow up to 3600. Default 600 leaves headroom for
+            heavy ML model loads.
         **a1_kwargs: forwarded to biomni.agent.A1.
     """
     executor = BaponiExecutor(thread_id=thread_id, timeout=timeout, env_vars=env_vars)
