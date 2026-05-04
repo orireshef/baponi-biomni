@@ -31,21 +31,39 @@ Final compressed image: ~10–12 GB, uncompressed ~25 GB.
 
 ## Build & publish
 
-CI builds and pushes on every push to master that touches
-`docker/Dockerfile.sandbox` or this workflow. Manual trigger:
+CI builds and pushes to **Docker Hub** (`docker.io/orireshef/baponi-biomni`)
+on every push to master that touches `docker/Dockerfile.sandbox` or this
+workflow. Docker Hub free tier allows unlimited public images, which is
+why we picked it over ghcr.io (the latter caps private packages at 500MB
+on free GitHub accounts and the image is ~10GB).
+
+### One-time setup
+
+Two repository secrets must be configured at
+https://github.com/orireshef/baponi-biomni/settings/secrets/actions:
+
+| Secret | Value |
+|---|---|
+| `DOCKERHUB_USERNAME` | Docker Hub username (e.g. `orireshef`) |
+| `DOCKERHUB_TOKEN` | An access token from https://hub.docker.com/settings/security with **Read & Write** scope on the `baponi-biomni` repo |
+
+The Docker Hub repo is auto-created **public** on first push for free-tier
+accounts. No manual repo creation needed.
+
+### Manual trigger
 
 ```bash
 gh workflow run build-sandbox-image.yml \
   -F tag=sandbox-r-bioconductor-2026-05
 ```
 
-Local build for testing:
+### Local build for testing
 
 ```bash
 docker buildx build \
   --platform linux/amd64 \
   -f docker/Dockerfile.sandbox \
-  -t ghcr.io/orireshef/baponi-biomni:sandbox-local \
+  -t orireshef/baponi-biomni:sandbox-local \
   --load \
   .
 ```
@@ -53,10 +71,10 @@ docker buildx build \
 Smoke-check the layer:
 
 ```bash
-docker run --rm ghcr.io/orireshef/baponi-biomni:sandbox-local \
+docker run --rm orireshef/baponi-biomni:sandbox-local \
   python -c "import biomni; from biomni.tool import pharmacology; print('ok')"
 
-docker run --rm ghcr.io/orireshef/baponi-biomni:sandbox-local \
+docker run --rm orireshef/baponi-biomni:sandbox-local \
   Rscript -e 'library(DESeq2); cat("DESeq2", as.character(packageVersion("DESeq2")), "\n")'
 ```
 
@@ -65,11 +83,11 @@ docker run --rm ghcr.io/orireshef/baponi-biomni:sandbox-local \
 Baponi binds one OCI image per API key (admin console → API Keys → image).
 
 1. Wait for the GH Action to push the image to
-   `ghcr.io/orireshef/baponi-biomni:sandbox-latest` (or your tag).
-2. If the registry is private, make sure Baponi's image pull credentials
-   include the `read:packages` scope on this org.
+   `docker.io/orireshef/baponi-biomni:sandbox-latest` (or your tag).
+2. The image is public on Docker Hub — no auth needed for Baponi to pull.
 3. In the Baponi admin console, create a new API key with this image
-   pinned. Copy the key into `.env` as `BAPONI_API_KEY`.
+   pinned (`orireshef/baponi-biomni:sandbox-latest`). Copy the key into
+   `.env` as `BAPONI_API_KEY`.
 4. Re-run `examples/admet.py`. The agent should be able to
    `from biomni.tool.pharmacology import predict_admet_properties` without
    the runtime install dance.
