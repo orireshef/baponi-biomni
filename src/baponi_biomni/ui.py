@@ -11,6 +11,10 @@ Reads from `.env`:
     LLM_MODEL             (default qwen3.6-35b-a3b-nvfp4)
     LLM_SOURCE            (default Custom; e.g. "Anthropic" for cloud)
     LLM_API_KEY           (default "lm-studio"; required for cloud providers)
+    LLM_MAX_TOKENS        (override LLM max_tokens; default leaves biomni's
+                           own value (8192) in place. Bump for reasoning
+                           models with big context windows. Setting it higher
+                           than the model's context window crashes LM Studio.)
 """
 from __future__ import annotations
 
@@ -69,12 +73,16 @@ def main() -> None:
 
     from baponi_biomni import make_agent
 
-    # Reasoning-capable local models (qwen3.x, deepseek-r1, ...) burn many
-    # tokens on hidden reasoning before the visible answer; biomni's
-    # hardcoded 8192 cap truncates them. Override only when source=Custom
-    # so we don't 400 cloud APIs that cap at lower model-specific values.
+    # max_tokens is the LLM's output cap. Some local reasoning models
+    # (qwen3.x, deepseek-r1, ...) burn many tokens on hidden reasoning
+    # before the visible answer, so biomni's hardcoded 8192 truncates them.
+    # But max_tokens cannot exceed the model's context window — biomni-r0
+    # for example has a 40k window and crashes LM Studio if we pass 200k.
+    # So: explicit env var, no auto-200k. Leave biomni's default in place
+    # unless the user opts in.
     source = os.environ.get("LLM_SOURCE", "Custom")
-    max_tokens = 200_000 if source == "Custom" else None
+    max_tokens_env = os.environ.get("LLM_MAX_TOKENS")
+    max_tokens = int(max_tokens_env) if max_tokens_env else None
 
     agent = make_agent(
         path=args.data_path,
