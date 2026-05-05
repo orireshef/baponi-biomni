@@ -34,25 +34,30 @@ just be another thing to maintain.
 
 ### `geo_download.py`
 
-Downloads gene-count / expression data for a GEO Series (GSE) from NCBI's
-public FTP. Stdlib-only.
+Downloads everything GEO hosts for a Series (matrix, soft, suppl) from NCBI's
+public FTP. Stdlib-only. Mirrors the canonical workflow from the
+[HBC public-genomic-data tutorial](https://hbctraining.github.io/Accessing_public_genomic_data/lessons/accessing_public_experimental_data.html).
 
 ```text
-python geo_download.py GSE12345 /home/baponi/data/GSE12345
-python geo_download.py GSE12345 /home/baponi/data/GSE12345 --include suppl
-python geo_download.py GSE12345 /home/baponi/data/GSE12345 --only matrix
+python geo_download.py GSE50499 /home/baponi/data/GSE50499
+python geo_download.py GSE50499 /home/baponi/data/GSE50499 --only suppl
+python geo_download.py GSE50499 /home/baponi/data/GSE50499 --skip matrix
 ```
 
-Defaults to `matrix` (the gene-by-sample expression matrix in
-`series_matrix.txt.gz`) + `soft` (full SOFT metadata). `--include suppl`
-opts in to raw supplementary archives, which are usually large and only
-needed if you're processing FASTQs / CEL files yourself.
+Defaults to all three categories. For RNA-seq studies the gene-count matrix
+that downstream tools (DESeq2 / edgeR / limma) expect typically lives in
+`suppl/`, **not** `matrix/` (the latter is GEO's own normalization, often
+empty or uninformative for RNA-seq).
 
-The script's `download_gse(gse_id, target_dir, categories)` function is also
+**Note**: GEO's FTP does NOT host raw FASTQs — those are in SRA, referenced
+from a GEO record via SRR/SRX accessions. Pulling raw reads needs sra-tools
+(`prefetch` + `fasterq-dump`) which is out of this script's scope.
+
+The `download_gse(gse_id, target_dir, categories)` function is also
 importable if you'd rather call it from agent-generated Python:
 
 ```python
 import sys; sys.path.insert(0, "/home/baponi")
 from geo_download import download_gse
-result = download_gse("GSE12345", "/home/baponi/data/GSE12345", ["matrix"])
+result = download_gse("GSE50499", "/home/baponi/data/GSE50499", ["suppl"])
 ```

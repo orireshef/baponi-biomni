@@ -1,19 +1,28 @@
 #!/usr/bin/env python3
 """Download a GEO Series (GSE) accession from NCBI FTP into a target directory.
 
-Focused on **gene-count / expression-summary** data, not raw reads. Stdlib-only,
-no GEOparse / no third-party install needed — runs against the cbioportal/biomni
-sandbox image as-is.
+Pulls everything GEO hosts for a series: matrix, soft, and supplementary
+files. For RNA-seq studies the gene-count matrices that downstream tools
+(DESeq2, edgeR, limma) expect typically live in `suppl/`, not `matrix/`
+(which holds GEO's own normalization and is often empty / not-counts for
+RNA-seq). See https://hbctraining.github.io/Accessing_public_genomic_data/lessons/accessing_public_experimental_data.html
+for the canonical workflow this script automates.
 
-Default categories:
-  - matrix/  (series_matrix.txt.gz: gene-by-sample expression matrix +
-             sample metadata; this is the gene-counts / normalized-counts file)
-  - soft/    (family.soft.gz: full SOFT-format metadata, useful for parsing
-             sample annotations programmatically)
+Note on raw reads: GEO's FTP does NOT host FASTQs — those live in SRA
+(referenced from a GEO record via SRR/SRX accessions). Pulling raw reads
+needs sra-tools (`prefetch` + `fasterq-dump`) and an SRR accession; out
+of scope for this script.
 
-`--include suppl` opts in to suppl/, which holds raw supplementary archives
-(FASTQs, CEL, BAM, processed counts in non-standard formats). Off by default
-because raw data is large and rarely needed when you have the matrix.
+Categories:
+  - matrix/  (series_matrix.txt.gz: GEO-normalized expression + sample
+             metadata; useful for older microarray studies, often
+             empty/uninformative for RNA-seq)
+  - soft/    (family.soft.gz: full SOFT-format sample annotations)
+  - suppl/   (depositor-uploaded files — for RNA-seq this is where the
+             gene-count matrix lives, e.g. GSE50499_GEO_Ceman_counts.txt.gz)
+
+Default: all three. Use `--only suppl` if you just want the count matrix and
+don't care about GEO's own pre-processing.
 
 NCBI GEO FTP path layout:
 
@@ -24,9 +33,9 @@ where <NNN>nnn drops the last 3 digits of the accession, e.g.
   GSE234567 -> GSE234nnn
 
 Usage:
-    python geo_download.py GSE12345 /home/baponi/data/GSE12345
-    python geo_download.py GSE12345 /home/baponi/data/GSE12345 --include suppl
-    python geo_download.py GSE12345 /home/baponi/data/GSE12345 --only matrix
+    python geo_download.py GSE50499 /home/baponi/data/GSE50499
+    python geo_download.py GSE50499 /home/baponi/data/GSE50499 --only suppl
+    python geo_download.py GSE50499 /home/baponi/data/GSE50499 --skip matrix
 
 Returns 0 on full success, 1 on any download failure (other categories still
 attempted).
@@ -153,7 +162,7 @@ def fetch_category(
 def download_gse(
     gse_id: str,
     target_dir: str | Path,
-    categories: Iterable[str] = ("matrix", "soft"),
+    categories: Iterable[str] = ("matrix", "soft", "suppl"),
 ) -> dict:
     """Download the requested categories for a GSE accession into target_dir.
     Returns a summary dict suitable for printing or programmatic inspection."""
@@ -178,46 +187,36 @@ def download_gse(
     return summary
 
 
-_DEFAULT_CATEGORIES = ("matrix", "soft")
 _ALL_CATEGORIES = ("matrix", "soft", "suppl")
 
 
 def _parse_args(argv: list[str]) -> argparse.Namespace:
     p = argparse.ArgumentParser(
-        description="Download gene-count / expression data for a GSE from NCBI GEO FTP",
+        description="Download GEO Series files (matrix, soft, supplementary) "
+                    "from NCBI FTP. Raw FASTQs are NOT here — those live in SRA.",
     )
-    p.add_argument("gse_id", help="GEO Series accession, e.g. GSE12345")
+    p.add_argument("gse_id", help="GEO Series accession, e.g. GSE50499")
     p.add_argument("target_dir", help="Local directory to download into")
     p.add_argument(
         "--only",
         action="append",
         choices=_ALL_CATEGORIES,
         help="Restrict to one or more categories (repeatable). "
-             "Default: matrix + soft (gene counts + metadata).",
-    )
-    p.add_argument(
-        "--include",
-        action="append",
-        choices=_ALL_CATEGORIES,
-        help="Add a category to the default set (repeatable). "
-             "Use `--include suppl` to also pull raw supplementary files.",
+             "Default: all three (matrix + soft + suppl).",
     )
     p.add_argument(
         "--skip",
         action="append",
         choices=_ALL_CATEGORIES,
-        help="Drop a category from the active set (repeatable).",
+        help="Drop a category from the active set (repeatable). "
+             "E.g. `--skip matrix` if the GEO-normalized matrix is unhelpful.",
     )
     return p.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv if argv is not None else sys.argv[1:])
-    cats: list[str] = list(args.only) if args.only else list(_DEFAULT_CATEGORIES)
-    if args.include:
-        for c in args.include:
-            if c not in cats:
-                cats.append(c)
+    cats: list[str] = list(args.only) if args.only else list(_ALL_CATEGORIES)
     if args.skip:
         cats = [c for c in cats if c not in args.skip]
     if not cats:
