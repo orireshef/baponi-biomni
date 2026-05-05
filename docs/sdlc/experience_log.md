@@ -1,5 +1,80 @@
 # SDLC Experience Log
 
+## v0.1.2 — sandbox_scripts pattern + GEO downloader (2026-05-05)
+
+### What Went Well
+
+- **Refusing to add executor surface area.** First pass added
+  `BaponiExecutor.upload_file` + a `--upload` flag on the UI launcher to push
+  local files into the sandbox via the Baponi Files API. User pushed back
+  with "why did you touch executor code? it should be executable from the
+  bash option no?" — they were right. The agent already runs bash, can curl
+  from raw github, can heredoc inline. Backed out the executor changes;
+  `sandbox_scripts/` README documents the three bash-reachable paths
+  instead. Worth ~50 LOC of avoided code path.
+- **Sourcing the canonical workflow before merging.** User dropped a link
+  to the HBC public-genomic-data tutorial mid-PR. The tutorial uses
+  `wget -r` against `suppl/` specifically — which corrected my misconception
+  that gene counts live in `matrix/`. For RNA-seq the count matrix that
+  DESeq2/edgeR want is in `suppl/` (e.g. `GSE50499_GEO_Ceman_counts.txt.gz`),
+  not in GEO's own normalization. Live-verified against the same GSE.
+- **Code-reviewer caught two real BLOCKING issues** that I'd missed on
+  self-review: path traversal via NCBI listing (filenames could contain
+  `/` or url-encoded `..`) and `--only`/`--skip` silently producing an
+  empty set when both were passed. Both fixed before merge.
+
+### What Went Wrong
+
+- **Tried to merge before formal Review.** When user said "if full /sdlc
+  was exec than you can merge", I had only done self-review on PR #3, not
+  the agent code-reviewer pass. Had to honestly say so, run review, find
+  blockers, fix, re-verify. Wasted a turn but caught real bugs.
+- **Defaults pinned to wrong category.** First version of the script
+  defaulted to `matrix + soft` because I assumed the matrix file = gene
+  counts. For microarray-era GSEs that's true; for RNA-seq it's typically
+  empty/uninformative and the count matrix is in `suppl/`. Lesson: when
+  authoring a domain-specific helper, find an authoritative tutorial and
+  match its defaults before shipping.
+- **Link scraper missed the obvious case.** The first version picked up
+  absolute URLs from NCBI's HTTP listing (sort-headers like
+  `?C=N;O=D` and full https links) and tried to "download" them, creating
+  a stray `https:` directory. Fixed by filtering hrefs that start with
+  http://, https://, ftp://, or `?`. The path-traversal hardening that
+  came later in review subsumes this — but the original miss was a
+  reminder that "the listing is HTML, parse it carefully" is a real cost,
+  not a one-liner.
+
+### Lessons Learned
+
+- **Bash reach > new APIs.** The sandbox already accepts bash. Adding a
+  custom upload code path (executor.upload_file + UI flag + tests) when
+  the agent could just `curl raw.githubusercontent.com/.../foo.py` was
+  pure surface area for no benefit. Default to extending what's already
+  there before adding new surface.
+- **Defending against hostile listings even when source is trusted.**
+  NCBI is fine, but the script ships as something the agent fetches and
+  runs against unspecified inputs. Belt-and-suspenders filtering of
+  filenames (unquote, reject `/`, `..`, `Path(name).name != name`) is
+  cheap insurance that costs nothing in the happy path.
+- **Run the actual code-reviewer agent before claiming SDLC complete.**
+  Self-review by the implementer always misses things the reviewer
+  catches with fresh eyes; the cost of running an agent is small
+  compared to the cost of a merge that needs to be reverted.
+
+### Metrics
+
+- Tests: 28 passing (no source-code changes in this PR — added one
+  script + a README).
+- Commits: 3 on the branch (initial, fix-defaults, blockers-resolution).
+- Review rounds: 2 (initial self-review missed BLOCKING issues; agent
+  reviewer found 2 BLOCKING + 3 nice-to-fix; addressed both blockers
+  before merge).
+- Live verifications:
+  - GSE5 matrix + soft → 833KB + 22MB OK
+  - GSE50499 --only suppl → `GSE50499_GEO_Ceman_counts.txt.gz` (320KB)
+    landed at `/data/bulk-gene-counts/GSE50499/suppl/` (matches the HBC
+    tutorial's expected file)
+
 ## v0.1.0 — baponi-biomni initial integration (2026-05-04)
 
 ### What Went Well
