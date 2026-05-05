@@ -38,10 +38,22 @@ Downloads everything GEO hosts for a Series (matrix, soft, suppl) from NCBI's
 public FTP. Stdlib-only. Mirrors the canonical workflow from the
 [HBC public-genomic-data tutorial](https://hbctraining.github.io/Accessing_public_genomic_data/lessons/accessing_public_experimental_data.html).
 
+By project convention each experiment lands under
+**`/data/bulk-gene-counts/<gse_id>/`**, with the three GEO categories nested
+inside:
+
+```
+/data/bulk-gene-counts/GSE50499/
+├── matrix/  GSE50499_series_matrix.txt.gz
+├── soft/    GSE50499_family.soft.gz
+└── suppl/   GSE50499_GEO_Ceman_counts.txt.gz
+```
+
 ```text
-python geo_download.py GSE50499 /home/baponi/data/GSE50499
-python geo_download.py GSE50499 /home/baponi/data/GSE50499 --only suppl
-python geo_download.py GSE50499 /home/baponi/data/GSE50499 --skip matrix
+python geo_download.py GSE50499                   # default target dir
+python geo_download.py GSE50499 --only suppl      # just the count matrix
+python geo_download.py GSE50499 --skip matrix
+python geo_download.py GSE50499 /custom/path      # override target dir
 ```
 
 Defaults to all three categories. For RNA-seq studies the gene-count matrix
@@ -53,11 +65,12 @@ empty or uninformative for RNA-seq).
 from a GEO record via SRR/SRX accessions. Pulling raw reads needs sra-tools
 (`prefetch` + `fasterq-dump`) which is out of this script's scope.
 
-The `download_gse(gse_id, target_dir, categories)` function is also
+The `download_gse(gse_id, target_dir=None, categories=...)` function is also
 importable if you'd rather call it from agent-generated Python:
 
 ```python
 import sys; sys.path.insert(0, "/home/baponi")
 from geo_download import download_gse
-result = download_gse("GSE50499", "/home/baponi/data/GSE50499", ["suppl"])
+result = download_gse("GSE50499")                     # default target dir
+result = download_gse("GSE50499", categories=["suppl"])
 ```

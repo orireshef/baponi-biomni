@@ -33,9 +33,10 @@ where <NNN>nnn drops the last 3 digits of the accession, e.g.
   GSE234567 -> GSE234nnn
 
 Usage:
-    python geo_download.py GSE50499 /home/baponi/data/GSE50499
-    python geo_download.py GSE50499 /home/baponi/data/GSE50499 --only suppl
-    python geo_download.py GSE50499 /home/baponi/data/GSE50499 --skip matrix
+    python geo_download.py GSE50499                    # default: /data/bulk-gene-counts/GSE50499/
+    python geo_download.py GSE50499 --only suppl
+    python geo_download.py GSE50499 --skip matrix
+    python geo_download.py GSE50499 /custom/path       # override target dir
 
 Returns 0 on full success, 1 on any download failure (other categories still
 attempted).
@@ -50,11 +51,12 @@ import urllib.request
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Iterable
-from urllib.parse import urljoin
+from urllib.parse import unquote, urljoin
 
 
 _GSE_RE = re.compile(r"^GSE(\d+)$", re.IGNORECASE)
 _BASE = "https://ftp.ncbi.nlm.nih.gov/geo/series/"
+_DEFAULT_TARGET_ROOT = "/data/bulk-gene-counts"
 
 
 class _LinkScraper(HTMLParser):
@@ -95,6 +97,29 @@ def _gse_dir(gse_id: str) -> str:
     return f"GSE{prefix}nnn"
 
 
+def _is_safe_filename(raw: str) -> bool:
+    """Reject anything that could escape the target directory.
+
+    NCBI is trusted, but the script's contract is "agent fetches it via curl
+    and runs it" — defending against a hostile listing keeps the trust
+    surface narrow. Filters out: parent-dir traversal, absolute paths,
+    nested paths, hidden files, and url-encoded variants of all of the
+    above (decode once before checking).
+    """
+    name = unquote(raw)
+    if not name or name in (".", ".."):
+        return False
+    if name.startswith("."):
+        return False
+    if "/" in name or "\\" in name:
+        return False
+    # Path(name).name strips path components — if it differs, the input
+    # contained traversal that survived the prior checks.
+    if Path(name).name != name:
+        return False
+    return True
+
+
 def _list_remote(url: str) -> list[str]:
     try:
         with urllib.request.urlopen(url, timeout=30) as resp:
@@ -105,7 +130,13 @@ def _list_remote(url: str) -> list[str]:
         raise
     parser = _LinkScraper()
     parser.feed(html)
-    return parser.links
+    safe: list[str] = []
+    for link in parser.links:
+        if _is_safe_filename(link):
+            safe.append(link)
+        else:
+            print(f"  [skip] suspicious filename in listing: {link!r}")
+    return safe
 
 
 def _download(url: str, dest: Path) -> int:
@@ -159,13 +190,23 @@ def fetch_category(
     return ok, fail
 
 
+def default_target_dir(gse_id: str) -> Path:
+    """Project convention: each experiment lands under
+    /data/bulk-gene-counts/<gse_id>/."""
+    return Path(_DEFAULT_TARGET_ROOT) / gse_id.upper()
+
+
 def download_gse(
     gse_id: str,
-    target_dir: str | Path,
+    target_dir: str | Path | None = None,
     categories: Iterable[str] = ("matrix", "soft", "suppl"),
 ) -> dict:
     """Download the requested categories for a GSE accession into target_dir.
+
+    If target_dir is None, defaults to /data/bulk-gene-counts/<gse_id>/.
     Returns a summary dict suitable for printing or programmatic inspection."""
+    if target_dir is None:
+        target_dir = default_target_dir(gse_id)
     target = Path(target_dir).expanduser().resolve()
     target.mkdir(parents=True, exist_ok=True)
 
@@ -196,29 +237,43 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
                     "from NCBI FTP. Raw FASTQs are NOT here — those live in SRA.",
     )
     p.add_argument("gse_id", help="GEO Series accession, e.g. GSE50499")
-    p.add_argument("target_dir", help="Local directory to download into")
     p.add_argument(
+        "target_dir",
+        nargs="?",
+        default=None,
+        help=f"Directory to download into. "
+             f"Default: {_DEFAULT_TARGET_ROOT}/<gse_id>/",
+    )
+    selection = p.add_mutually_exclusive_group()
+    selection.add_argument(
         "--only",
         action="append",
         choices=_ALL_CATEGORIES,
         help="Restrict to one or more categories (repeatable). "
-             "Default: all three (matrix + soft + suppl).",
+             "Default: all three (matrix + soft + suppl). "
+             "Mutually exclusive with --skip.",
     )
-    p.add_argument(
+    selection.add_argument(
         "--skip",
         action="append",
         choices=_ALL_CATEGORIES,
-        help="Drop a category from the active set (repeatable). "
-             "E.g. `--skip matrix` if the GEO-normalized matrix is unhelpful.",
+        help="Drop a category from the default set (repeatable). "
+             "E.g. `--skip matrix` if the GEO-normalized matrix is unhelpful. "
+             "Mutually exclusive with --only.",
     )
     return p.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv if argv is not None else sys.argv[1:])
-    cats: list[str] = list(args.only) if args.only else list(_ALL_CATEGORIES)
-    if args.skip:
-        cats = [c for c in cats if c not in args.skip]
+    if args.only:
+        # dedupe while preserving order
+        seen: set[str] = set()
+        cats = [c for c in args.only if not (c in seen or seen.add(c))]
+    elif args.skip:
+        cats = [c for c in _ALL_CATEGORIES if c not in set(args.skip)]
+    else:
+        cats = list(_ALL_CATEGORIES)
     if not cats:
         print("No categories selected.", file=sys.stderr)
         return 2
