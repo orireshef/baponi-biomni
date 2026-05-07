@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "extraKnownMarketplaces": {
+    "life-sciences": {
+      "source": {
+        "source": "github",
+        "repo": "anthropics/life-sciences"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "pubmed@life-sciences": true,
+    "biorxiv@life-sciences": true,
+    "clinical-trials@life-sciences": true,
+    "chembl@life-sciences": true,
+    "open-targets@life-sciences": true,
+    "tooluniverse@life-sciences": true,
+    "scientific-problem-selection@life-sciences": true,
+    "single-cell-rna-qc@life-sciences": true,
+    "scvi-tools@life-sciences": true,
+    "nextflow-development@life-sciences": true,
+    "instrument-data-to-allotrope@life-sciences": true,
+    "clinical-trial-protocol@life-sciences": true
+  }
+}
