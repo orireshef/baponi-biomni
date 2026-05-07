@@ -21,6 +21,17 @@ See `README.md` for usage.
 - No `Co-Authored-By` trailers.
 - Commit eagerly; one logical change per commit.
 
+## Life-sciences plugins
+
+`.claude/settings.json` registers Anthropic's
+[life-sciences marketplace](https://github.com/anthropics/life-sciences) and
+enables the no-auth plugins (PubMed, bioRxiv, ClinicalTrials.gov, ChEMBL,
+Open Targets, ToolUniverse) plus skills (single-cell-rna-qc, scvi-tools,
+nextflow-development, instrument-data-to-allotrope, clinical-trial-protocol,
+scientific-problem-selection). Auth-gated plugins (BioRender, Synapse, Wiley,
+10x Genomics, Owkin, Medidata) ship disabled — enable via `/plugin` after
+configuring credentials.
+
 ## Discipline
 
 Non-trivial work follows the **`/sdlc`** skill (`.claude/skills/sdlc/SKILL.md`):
