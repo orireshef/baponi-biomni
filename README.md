@@ -60,6 +60,20 @@ print(ex.python("print(x)"))    # "42\n"
 print(ex.bash("ls /home/baponi"))
 ```
 
+## Claude Code life-sciences plugins
+
+`.claude/settings.json` registers Anthropic's
+[life-sciences marketplace](https://github.com/anthropics/life-sciences) and
+pre-enables the no-auth plugins so anyone running Claude Code in this repo gets
+literature search (PubMed, bioRxiv), drug/target data (ChEMBL, Open Targets,
+ClinicalTrials.gov), and skills for single-cell QC, scvi-tools, nf-core
+pipelines, Allotrope conversion, clinical-trial protocols, and scientific
+problem selection — alongside biomni's 150+ tools.
+
+Auth-gated plugins (BioRender, Synapse, Wiley Scholar Gateway, 10x Genomics
+Cloud, Owkin, Medidata) are available in the marketplace but disabled by
+default — enable + configure them via `/plugin` when needed.
+
 ## Limitations
 
 - **R is not supported.** `run_r_code` raises `RNotSupportedError`. Baponi's
