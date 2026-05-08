@@ -4,11 +4,26 @@
 **Sources**: Open Targets Platform 26.03 · GSE150910 bulk RNA-seq (n=206) · GSE135893 single-cell (n=114k annotated) · PubMed · OpenFDA AERS
 **Branch**: `analysis/ipf-target-prioritisation`
 
-**What this report contains**: 12 phases (A–L) of analysis stacking genetic → druggability → bulk transcriptomics → single-cell → bulk-deconvolution → pseudobulk → toxicity evidence to prioritise novel IPF targets. Top-5 picks (MUC5B / SFTPA2 / DSP / TERT / MUC5AC) robust across 16 weight perturbations. Headline finding: OT correctly surfaces the disease axis but the obvious drug-target match for TERT (imetelstat) is mechanistically backwards — and the right class (telomerase activators / androgens like danazol) fails on tolerability per black-box-warning + AERS evidence we now document empirically.
+**What this report contains**: 13 phases (A–M) of analysis stacking genetic → druggability → bulk transcriptomics → single-cell → bulk-deconvolution → pseudobulk → toxicity → rank-aggregation evidence to prioritise novel IPF targets. **Stable top-4 (MUC5B, SFTPA2, TERT, DSP) across heuristic-weighted, Borda, AND RRA** — robust to both weight perturbation *and* aggregation method choice. Headline finding: OT correctly surfaces the disease axis but the obvious drug-target match for TERT (imetelstat) is mechanistically backwards — and the right class (telomerase activators / androgens like danazol) fails on tolerability per black-box-warning + AERS evidence we now document empirically.
 
-## TL;DR — top picks (composite v2)
+## TL;DR — top picks (rank-aggregation, Phase M)
 
-Composite v2 adds a transcriptomic axis (bulk DE in IPF lung) on top of v1's genetic + druggability + mouse-phenotype axes. Top-5 picks are **identical across 16 weight perturbations** (genetic_w ∈ {0.20…0.50} × tx_w ∈ {0.10…0.40}; see figure J2):
+Phase M replaces the heuristic weighted-sum composite with **rank-aggregation methods that need no weights at all** (Borda count + RobustRankAggreg, [Stuart 2003](https://doi.org/10.1093/bioinformatics/btg455)). Each evidence component contributes equally as a ranked list. The headline result:
+
+**Stable top-4 across heuristic v2, Borda, AND RRA**:
+
+| Rank | Target | Stratum | Why it's stable |
+|-----:|--------|---------|-----------------|
+| 1 | **MUC5B** | C: novel | Top in tx + literature, strong on genetic — wins under any aggregation |
+| 2–4 | **SFTPA2 / TERT / DSP** | C novel / B repurpose / C novel | All in top-5 across all three methods; rank order swaps slightly between Borda (SFTPA2 → TERT → DSP) and RRA (DSP → SFTPA2 → TERT) |
+
+The 5th slot is **method-dependent**: heuristic v2 picks MUC5AC (genetic + tx-driven); Borda picks NR3C1; RRA picks FGFR1. Both Borda's NR3C1 and RRA's FGFR1 are Stratum-A targets already in IPF clinic — they climb into the top-5 because removing the genetic-axis weighting unmasks a hidden circularity in the druggability axis (already-drugged targets have ligands by definition). This is itself a finding: **the principled aggregation surfaces 4 robust novel picks; the 5th slot exposes druggability-axis circularity.**
+
+See [M_rank_aggregation.md](M_rank_aggregation.md) for full method, per-component ranks, and figures M1–M2.
+
+### Earlier heuristic ranking (for comparison)
+
+The earlier composite v2 (now demoted to *one of three* methods) used hand-picked weights (0.30 genetic / 0.25 tx / 0.15 druggability / 0.15 mouse / 0.10 literature / 0.05 biology / −0.10 safety). Top-5 picks were **identical across 16 weight perturbations** (genetic_w ∈ {0.20…0.50} × tx_w ∈ {0.10…0.40}; see figure J2):
 
 | Rank | Target | Stratum | Composite v1 → v2 | TL;DR |
 |-----:|--------|---------|------------------:|-------|
@@ -101,6 +116,19 @@ Adding the transcriptomic axis **promotes** targets with genetic evidence corrob
 
 **Why.** Phase I's per-cell observational means show *direction*; Phase K's pseudobulk DE adds *statistical inference* (with sample-level error structure). Deconvolution in particular addresses Phase I's "cell-composition vs cell-state" question directly: e.g. is DSP up because of more DSP-high cells, more DSP per cell, or both? (Answer: both.)
 
+### Phase M — rank-aggregation (replaces heuristic weighting)
+
+**What we did.** Replaced the hand-picked v1/v2 weighted-sum composite with two parameter-free rank-aggregation methods:
+
+- **Borda count**: per-component rank → sum across 6 components. Higher = better. Equivalent to mean rank.
+- **RobustRankAggreg (RRA)** [Stuart 2003](https://doi.org/10.1093/bioinformatics/btg455): per-target rho-score from order statistics. Under the null that each component rank is uniform on (0,1], the k-th best rank's probability is given by Beta(k, K−k+1); rho = min over k. Targets with consistent multi-axis strength get tiny rho.
+
+**Why.** Weighted-sum composites ask the analyst to pick weights. Even if perturbation-robust (Phase J showed the v2 top-5 was), the weights are still heuristic. Rank-aggregation makes no weight choice. Two methods because they agree on stable picks but disagree on edge cases — disagreement is informative.
+
+**How to read.** Same components as composite v2 (genetic / tx / druggability / mouse / literature / biology). `safety_penalty` is dropped from the aggregation (rank-agg can't naturally consume penalties); we discuss safety as a post-hoc filter in Phase L instead.
+
+**Where do the original v1/v2 weights come from?** The honest answer: hand-picked by the analyst based on biological priors (genetics most causal → highest weight; tx + mouse phenotypes are direct biological corroboration → next tier; literature and biology lower because they're noisier). The Phase J sensitivity analysis showed the top-5 was robust to ±perturbation, but that's *robustness given a heuristic prior*, not *derivation*. Phase M removes the weight-choice problem entirely.
+
 ### Phase L — toxicity / safety
 
 **What we did.** Combined three OT 26.03 evidence sources:
@@ -142,6 +170,7 @@ The top-5 is **highly weight-robust**. Per-target rank ranges (over all 16 setti
 | J | Composite v2 + sensitivity + report | inline | top-5 robust across 16 weight grids | (this file) |
 | K | Bulk deconvolution (NNLS) + pseudobulk per-cell-type DE | sc-derived 135-gene × 26-cell-type signature; Mann–Whitney + BH-FDR | AT1 −0.029 / AT2 −0.019 / Endothelial −0.022 vs Basal +0.052 / Myofibroblasts +0.025 / Plasma +0.021. Pseudobulk: MUC5B in AT2 mean 0.011→1.42 (raw p=8e-4) — partially reverses the AT2-softening from reviewer round | [K_deconvolution_findings.md](K_deconvolution_findings.md) |
 | L | Toxicity / safety (drug_warning + AERS + target hasSafetyEvent + geneticConstraint) | OT mining | Danazol: 5 black-box warnings + 63 AERS signals (hematologic dominant) — empirically explains 38–56% AE discontinuation in IPF clinical trials. Imetelstat: directionally wrong + telomerase inhibition has known myelosuppression (problematic for telomeropathy patients). Top-5 novel targets all clean in OT `hasSafetyEvent`, but DSP genetic constraint = −0.75 is a real selectivity concern | [L_toxicity_findings.md](L_toxicity_findings.md) |
+| **M** | **Rank-aggregation re-ranking** (Borda + RRA — replaces hand-picked weights with principled aggregation) | scipy.stats.rankdata + Beta CDF order statistics | **Stable top-4 across heuristic v2, Borda, AND RRA: MUC5B / SFTPA2 / TERT / DSP**. 5th slot diverges (v2 → MUC5AC; Borda → NR3C1; RRA → FGFR1) — exposes druggability-axis circularity (already-drugged Stratum-A targets climb when genetic-bias is removed) | [M_rank_aggregation.md](M_rank_aggregation.md) |
 
 ## Per-target deep-dive
 
@@ -234,6 +263,14 @@ See "Headline finding" above. Patient-stratification by leukocyte telomere lengt
 
 The deconvolution recovers known IPF biology with high statistical confidence: alveolar destruction (AT1/AT2/endothelial collapse) + airway remodeling (basal expansion) + fibrotic effector expansion (myofibroblasts) + tertiary lymphoid structure formation (B/plasma cells).
 
+## Phase M — rank-aggregation (figures)
+
+![M1 rank aggregation](figures/M1_rank_aggregation.png)
+**M1**: (A) per-component rank heatmap (target × component), rows sorted by Borda. (B) Borda-vs-RRA scatter — methods agree closely except in the 5–10 mid-rank band where they trade off mean-rank-quality vs multi-axis-consistency. (C) v2 → Borda → RRA slope graph; **stable top-4 (MUC5B, SFTPA2, TERT, DSP) highlighted in red**.
+
+![M2 component breakdown](figures/M2_per_target_components.png)
+**M2**: per-component contribution bars for the top-8 Borda picks. Shows *why* each target ranks where it does — e.g., MUC5B's Borda comes from balanced top ranks across genetic/tx/literature; NR3C1's Borda comes from top druggability + mouse-phenotype + literature with zero genetic; PARN's higher v2 was held up entirely by its rank-1 genetic, with no support from any other axis.
+
 ## Phase L — toxicity / safety (figures)
 
 ![Toxicity overview](figures/L1_toxicity_overview.png)
@@ -291,13 +328,17 @@ A future iteration of the composite should pull these into the candidate set and
 | Hematologic toxicity dominates danazol AE profile | ✓ Phase L category analysis | – | Computed |
 | Top-5 targets clean per OT hasSafetyEvent | ✓ Phase L | – | Computed |
 | DSP genetic constraint −0.75 → cardiac safety risk if reduced | ✓ Phase L (target_prioritisation) | known DSP LOF cardiomyopathy | Both |
+| Top-4 (MUC5B, SFTPA2, TERT, DSP) stable across heuristic + Borda + RRA | ✓ Phase M | – | Computed |
+| 5th slot is method-dependent; rank-agg unmasks druggability-axis circularity | ✓ Phase M | – | Computed (a refinement of the original weight-circularity analysis) |
+| Composite weights v1/v2 are hand-picked heuristics, not derived | ✓ Phase M (acknowledged + replaced) | – | Honest documentation |
 
-**Net audit (updated)**: 14 claims directly computed by us; 5 literature-only; 5 jointly; **4 corrections from reviewer feedback** (DSP direction, MUC5B AT2 softening **partially reversed by Phase K pseudobulk**, FAM13A direction caveat, OR correction).
+**Net audit (updated)**: 17 claims directly computed by us; 5 literature-only; 5 jointly; **4 corrections from reviewer feedback** (DSP direction, MUC5B AT2 softening **partially reversed by Phase K pseudobulk**, FAM13A direction caveat, OR correction); **1 methodological replacement** (Phase M rank-aggregation supersedes the v1/v2 heuristic ranking).
 
 ## Limitations and analyses outstanding
 
 - **Pseudobulk per-cell-type DE with DESeq2** (formal negative-binomial mixed-effects). Phase K used Mann-Whitney on log-normalized pseudobulk because pyDESeq2's per-cell-type design loop didn't fit in the available compute time. Mann-Whitney is robust but has less power than a proper count-based DE for small samples. None of the 525 tests reach BH-padj<0.05; raw p-values are still informative but a properly powered analysis would solidify the per-cell-type findings.
 - **BayesPrism deconvolution** (the user's preferred method): R install couldn't complete. NNLS gives the same proportion-estimation logic minus the Bayesian prior; future work should re-run with BayesPrism for the gene-by-cell-type expression decomposition that NNLS doesn't provide.
+- **Bayesian rank uncertainty (Dirichlet weights)**: Phase M removes the weight-choice problem via rank-aggregation, but a fully principled treatment would propagate weight uncertainty through to *rank intervals* (95% rank-CI per target) rather than point ranks. Out of scope for this iteration; tractable as a future extension.
 - **CHP comparator** — GSE150910 includes 82 chronic hypersensitivity pneumonitis samples we held out. A three-way IPF / CHP / Control DE could disentangle IPF-specific vs general-fibrosis signatures.
 - **Spatial transcriptomic validation** — niche-specific localisation of the top targets in IPF lung ([2024 *Sci Adv*, PMID 39121212](https://doi.org/10.1126/sciadv.adl5473)) would refine the cell-state interpretation. Not pursued here.
 - **OT release recency** — OT 26.03 is March 2026; newer evidence (especially around the recent KLF6/WTAP, YBX1, PLA2G7 candidates) is not in this composite.
